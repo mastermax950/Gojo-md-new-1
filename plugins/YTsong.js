@@ -1,117 +1,131 @@
-const { cmd } = require('../lib/command');
-const { ytsearch } = require('@dark-yasiya/yt-dl.js');
-const fetch = require('node-fetch');
+const { cmd, commands } = require('../lib/command');
+const yts = require('yt-search');
+const { fetchJson } = require('../lib/functions');
+
+function extractYouTubeId(url) {
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+function convertYouTubeLink(q) {
+    const videoId = extractYouTubeId(q);
+    if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
+    return q;
+}
 
 cmd({
-  pattern: "song",
-  react: "🎧",
-  desc: "Download YouTube song",
-  category: "download",
-  use: ".song <YouTube URL or Name>",
-  filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
-  try {
-    if (!q) return reply("🎵 Please provide a YouTube link or song name.");
+    pattern: "song",
+    alias: "play1",
+    desc: "song dl.",
+    react: "🎵",
+    category: "download",
+    filename: __filename
+}, async (conn, mek, m, extras) => {
+    try {
+        let q = convertYouTubeLink(extras.q);
+        if (!q) return extras.reply("*`Need title or Link`*");
 
-    const yt = await ytsearch(q);
-    if (!yt.results || yt.results.length === 0) return reply("❌ No results found!");
+        const search = await yts(q);
+        const data = search.videos[0];
+        const url = data.url;
 
-    const song = yt.results[0];
-    const url = song.url;
-    const thumb = song.thumbnail;
+        const desc = `┏━❮ SONG INFO ❯━
+┃🤖 *Title:* ${data.title}
+┃⏱️ *Duration:* ${data.timestamp}
+┃👀 *Views:* ${data.views}
+┃📅 *Uploaded:* ${data.ago}
+┗━━━━━━━━━━━━━━𖣔𖣔
+╭━━〔🔢 *REPLY NUMBER*〕━━┈⊷
+┃•1 Download Audio 🎧
+┃•2 Download Document 📁
+┃•3 Download Voice 🎤
+╰──────────────┈⊷
+> 𝐏𝙾𝚆𝙴𝚁𝙴𝙳 𝐁𝚈 𝐆𝐎𝐉𝐎`;
 
-    const caption = `
-🎧 *Title:* ${song.title}
-⏱ *Duration:* ${song.timestamp}
-👤 *Author:* ${song.author.name}
-🔗 *URL:* ${url}
+        const sentMsg = await conn.sendMessage(extras.from, {
+            image: { url: data.thumbnail },
+            caption: desc,
+            contextInfo: {
+                mentionedJid: [extras.sender],
+                forwardingScore: 1,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                  
+                    newsletterName: "𝐆𝐎𝐉𝐎 𝐌𝐃",
+                    serverMessageId: 999
+                }
+            }
+        }, { quoted: mek });
 
-*  Gojo Select download format:*
-1. 🎶 Audio
-2. 📂 Document
-3. 💫 Voice Note
+        const messageID = sentMsg.key.id;
 
-_Reply with the number to download._`;
+        conn.ev.on('messages.upsert', async (messageUpdate) => {
+            const msg = messageUpdate.messages[0];
+            if (!msg.message) return;
 
-    const sent = await conn.sendMessage(from, {
-      image: { url: thumb },
-      caption,
-    }, { quoted: mek });
+            const typeText = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            const isReplyToBot = msg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
+            const from = msg.key.remoteJid;
 
-    const messageId = sent.key.id;
+            if (!isReplyToBot) return;
+            if (!['1', '2', '3'].includes(typeText)) return;
 
-    const handler = async (msgUpdate) => {
-      try {
-        const msg = msgUpdate.messages[0];
-        if (!msg.message?.extendedTextMessage) return;
-        if (msg.key.fromMe) return;
+            await conn.sendMessage(from, { react: { text: '📥', key: msg.key } });
 
-        const repliedTo = msg.message.extendedTextMessage.contextInfo?.stanzaId;
-        if (repliedTo !== messageId) return;
+            const down = await fetchJson(`https://lakiya-api-site.vercel.app/download/ytmp3new?url=${url}&type=mp3`);
 
-        const selected = msg.message.extendedTextMessage.text.trim();
+            if (!down?.result?.downloadUrl) {
+                return conn.sendMessage(from, { text: "❌ Failed to fetch song. Try again later." }, { quoted: msg });
+            }
 
-        // Send react 📥 to show download started
-        await conn.sendMessage(from, {
-          react: { text: "📥", key: msg.key }
+            const dlLink = down.result.downloadUrl;
+
+            if (typeText === '1') {
+                await conn.sendMessage(from, {
+                    audio: { url: dlLink },
+                    mimetype: "audio/mpeg",
+                    contextInfo: {
+                        externalAdReply: {
+                            title: data.title,
+                            body: data.videoId,
+                            mediaType: 1,
+                            sourceUrl: data.url,
+                            thumbnailUrl: data.thumbnail,
+                            renderLargerThumbnail: true
+                        }
+                    }
+                }, { quoted: msg });
+            } else if (typeText === '2') {
+                await conn.sendMessage(from, {
+                    document: { url: dlLink },
+                    mimetype: "audio/mp3",
+                    fileName: `${data.title}.mp3`,
+                    caption: "> 𝐏𝙾𝚆𝙴𝚁𝙴𝙳 𝐁𝚈 𝐆𝐨𝐣𝐨"
+                }, { quoted: msg });
+            } else if (typeText === '3') {
+                await conn.sendMessage(from, {
+                    audio: { url: dlLink },
+                    mimetype: "audio/mpeg",
+                    ptt: true,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: data.title,
+                            body: data.videoId,
+                            mediaType: 1,
+                            sourceUrl: data.url,
+                            thumbnailUrl: data.thumbnail,
+                            renderLargerThumbnail: true
+                        }
+                    }
+                }, { quoted: msg });
+            }
+
+            await conn.sendMessage(from, { react: { text: '✅', key: msg.key } });
         });
 
-        const res = await fetch(`https://apis.davidcyriltech.my.id/youtube/mp3?url=${encodeURIComponent(url)}`);
-        const data = await res.json();
-        const dl = data.result.downloadUrl;
-
-        if (selected === "1") {
-          await conn.sendMessage(from, {
-            audio: { url: dl },
-            mimetype: 'audio/mpeg'
-          }, { quoted: msg });
-
-          // Download complete react ✅
-          await conn.sendMessage(from, {
-            react: { text: "✅", key: msg.key }
-          });
-
-        } else if (selected === "2") {
-          await conn.sendMessage(from, {
-            document: { url: dl },
-            mimetype: 'audio/mpeg',
-            fileName: `${song.title}.mp3`
-          }, { quoted: msg });
-
-          await conn.sendMessage(from, {
-            react: { text: "✅", key: msg.key }
-          });
-
-        } else if (selected === "3") {
-          await conn.sendMessage(from, {
-            audio: { url: dl },
-            mimetype: 'audio/mpeg',
-            ptt: true
-          }, { quoted: msg });
-
-          await conn.sendMessage(from, {
-            react: { text: "✅", key: msg.key }
-          });
-
-        } else {
-          await conn.sendMessage(from, {
-            text: "❌ Invalid option. Please reply with 1, 2, or 3."
-          }, { quoted: msg });
-          return;
-        }
-
-        // Remove listener after one valid reply
-        conn.ev.off('messages.upsert', handler);
-
-      } catch (err) {
-        console.error("❌ Song reply handler error:", err);
-      }
-    };
-
-    conn.ev.on('messages.upsert', handler);
-
-  } catch (e) {
-    console.error(e);
-    reply("❌ Error occurred. Try again.");
-  }
+    } catch (e) {
+        console.log(e);
+        extras.reply(`❌ Error: ${e.message}`);
+    }
 });
