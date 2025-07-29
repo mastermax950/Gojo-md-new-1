@@ -13,7 +13,6 @@ cmd({
   try {
     if (!q) return reply("🎵 *Please provide a YouTube link or song name.*");
 
-    // Check if input is a YouTube URL
     const isYouTubeURL = q.includes("youtube.com") || q.includes("youtu.be");
     let song;
 
@@ -53,6 +52,7 @@ _Reply with the number 1, 2, or 3 to proceed._`;
 
     const messageId = sent.key.id;
 
+    // Register a listener for replies
     const handler = async (msgUpdate) => {
       try {
         const msg = msgUpdate.messages[0];
@@ -63,13 +63,20 @@ _Reply with the number 1, 2, or 3 to proceed._`;
 
         const selected = msg.message.extendedTextMessage.text.trim();
 
+        // React 📥
         await conn.sendMessage(from, {
           react: { text: "📥", key: msg.key }
         });
 
+        // Fetch mp3 download URL
         const res = await fetch(`https://apis.davidcyriltech.my.id/youtube/mp3?url=${encodeURIComponent(url)}`);
         const data = await res.json();
-        if (!data?.result?.downloadUrl) return reply("❌ *Failed to get download link.*");
+
+        if (!data?.result?.downloadUrl) {
+          return conn.sendMessage(from, {
+            text: "❌ *Failed to fetch download link.*"
+          }, { quoted: msg });
+        }
 
         const dl = data.result.downloadUrl;
         const safeName = song.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".mp3";
@@ -101,20 +108,21 @@ _Reply with the number 1, 2, or 3 to proceed._`;
           return;
         }
 
+        // React ✅
         await conn.sendMessage(from, {
           react: { text: "✅", key: msg.key }
         });
 
-        conn.ev.off('messages.upsert', handler);
-
       } catch (err) {
         console.error("❌ Handler Error:", err);
-        reply("⚠️ *Error while processing your request.*");
+        reply("⚠️ *Something went wrong while sending the song.*");
       }
     };
 
     conn.ev.on('messages.upsert', handler);
-    setTimeout(() => conn.ev.off('messages.upsert', handler), 60000); // auto-remove listener
+
+    // Remove the listener after 5 minutes (optional cleanup)
+    setTimeout(() => conn.ev.off('messages.upsert', handler), 300000);
 
   } catch (e) {
     console.error("❌ Main Error:", e);
