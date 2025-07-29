@@ -6,7 +6,7 @@ const fg = require('api-dylux');
 const fetch = require('node-fetch');
 var os = require('os')
 const { File } = require('megajs');
-const cinesubz = require('../lib/cinesubz')
+
 function formatNumber(num) {
     return String(num).padStart(1, '0');
 } 
@@ -20,8 +20,8 @@ var giveme = "Please give me movie or tv show name"
 var err = '❗ error'
 var oce = ''
 
-const apilink = "https://www.dark-yasiya-api.site"
-const apikey = "yasiyalk"
+const baseUrl = "https://darkyasiya-new-movie-api.vercel.app/";
+const apiKey = "";
 //===============================================================================
 
 cmd({
