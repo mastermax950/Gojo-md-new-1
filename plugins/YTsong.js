@@ -1,114 +1,117 @@
-const { cmd, commands } = require("../lib/command");
-const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const { cmd } = require('../lib/command');
+const { ytsearch } = require('@dark-yasiya/yt-dl.js');
+const fetch = require('node-fetch');
 
-cmd(
-  {
-    pattern: "song",
-    react: "🎵",
-    desc: "Download Song",
-    category: "download",
-    filename: __filename,
-  },
-  async (
-    robin,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      body,
-      isCmd,
-      command,
-      args,
-      q,
-      isGroup,
-      sender,
-      senderNumber,
-      botNumber2,
-      botNumber,
-      pushname,
-      isMe,
-      isOwner,
-      groupMetadata,
-      groupName,
-      participants,
-      groupAdmins,
-      isBotAdmins,
-      isAdmins,
-      reply,
-    }
-  ) => {
-    try {
-      if (!q) return reply("*නමක් හරි ලින්ක් එකක් හරි දෙන්න* 🌚❤️");
+cmd({
+  pattern: "song",
+  react: "🎧",
+  desc: "Download YouTube song",
+  category: "download",
+  use: ".song <YouTube URL or Name>",
+  filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
+  try {
+    if (!q) return reply("🎵 Please provide a YouTube link or song name.");
 
-      // Search for the video
-      const search = await yts(q);
-      const data = search.videos[0];
-      const url = data.url;
+    const yt = await ytsearch(q);
+    if (!yt.results || yt.results.length === 0) return reply("❌ No results found!");
 
-      // Song metadata description
-      let desc = `
-*❤️GOJO SONG DOWNLOADER❤️*
+    const song = yt.results[0];
+    const url = song.url;
+    const thumb = song.thumbnail;
 
-👻 *title* : ${data.title}
-👻 *description* : ${data.description}
-👻 *time* : ${data.timestamp}
-👻 *ago* : ${data.ago}
-👻 *views* : ${data.views}
-👻 *url* : ${data.url}
+    const caption = `
+🎧 *Title:* ${song.title}
+⏱ *Duration:* ${song.timestamp}
+👤 *Author:* ${song.author.name}
+🔗 *URL:* ${url}
 
-𝐌𝐚𝐝𝐞 𝐛𝐲 𝐬𝐚𝐲𝐮𝐫𝐚
-`;
+*  Gojo Select download format:*
+1. 🎶 Audio
+2. 📂 Document
+3. 💫 Voice Note
 
-      // Send metadata thumbnail message
-      await robin.sendMessage(
-        from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
+_Reply with the number to download._`;
 
-      // Download the audio using @vreden/youtube_scraper
-      const quality = "128"; // Default quality
-      const songData = await ytmp3(url, quality);
+    const sent = await conn.sendMessage(from, {
+      image: { url: thumb },
+      caption,
+    }, { quoted: mek });
 
-      // Validate song duration (limit: 30 minutes)
-      let durationParts = data.timestamp.split(":").map(Number);
-      let totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
+    const messageId = sent.key.id;
 
-      if (totalSeconds > 1800) {
-        return reply("⏱️ audio limit is 180 minitues");
+    const handler = async (msgUpdate) => {
+      try {
+        const msg = msgUpdate.messages[0];
+        if (!msg.message?.extendedTextMessage) return;
+        if (msg.key.fromMe) return;
+
+        const repliedTo = msg.message.extendedTextMessage.contextInfo?.stanzaId;
+        if (repliedTo !== messageId) return;
+
+        const selected = msg.message.extendedTextMessage.text.trim();
+
+        // Send react 📥 to show download started
+        await conn.sendMessage(from, {
+          react: { text: "📥", key: msg.key }
+        });
+
+        const res = await fetch(`https://apis.davidcyriltech.my.id/youtube/mp3?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        const dl = data.result.downloadUrl;
+
+        if (selected === "1") {
+          await conn.sendMessage(from, {
+            audio: { url: dl },
+            mimetype: 'audio/mpeg'
+          }, { quoted: msg });
+
+          // Download complete react ✅
+          await conn.sendMessage(from, {
+            react: { text: "✅", key: msg.key }
+          });
+
+        } else if (selected === "2") {
+          await conn.sendMessage(from, {
+            document: { url: dl },
+            mimetype: 'audio/mpeg',
+            fileName: `${song.title}.mp3`
+          }, { quoted: msg });
+
+          await conn.sendMessage(from, {
+            react: { text: "✅", key: msg.key }
+          });
+
+        } else if (selected === "3") {
+          await conn.sendMessage(from, {
+            audio: { url: dl },
+            mimetype: 'audio/mpeg',
+            ptt: true
+          }, { quoted: msg });
+
+          await conn.sendMessage(from, {
+            react: { text: "✅", key: msg.key }
+          });
+
+        } else {
+          await conn.sendMessage(from, {
+            text: "❌ Invalid option. Please reply with 1, 2, or 3."
+          }, { quoted: msg });
+          return;
+        }
+
+        // Remove listener after one valid reply
+        conn.ev.off('messages.upsert', handler);
+
+      } catch (err) {
+        console.error("❌ Song reply handler error:", err);
       }
+    };
 
-      // Send audio file
-      await robin.sendMessage(
-        from,
-        {
-          audio: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-        },
-        { quoted: mek }
-      );
+    conn.ev.on('messages.upsert', handler);
 
-      // Send as a document (optional)
-      await robin.sendMessage(
-        from,
-        {
-          document: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-          fileName: `${data.title}.mp3`,
-          caption: "𝐌𝐚𝐝𝐞 𝐛𝐲 𝐬𝐚𝐲𝐮𝐫𝐚",
-        },
-        { quoted: mek }
-      );
-
-      return reply("*Thanks for using my bot* 🌚❤️");
-    } catch (e) {
-      console.log(e);
-      reply(`❌ Error: ${e.message}`);
-    }
+  } catch (e) {
+    console.error(e);
+    reply("❌ Error occurred. Try again.");
   }
-);
+});
