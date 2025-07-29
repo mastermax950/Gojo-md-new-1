@@ -1,131 +1,123 @@
-const { cmd, commands } = require('../lib/command');
-const yts = require('yt-search');
-const { fetchJson } = require('../lib/functions');
-
-function extractYouTubeId(url) {
-    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}
-
-function convertYouTubeLink(q) {
-    const videoId = extractYouTubeId(q);
-    if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
-    return q;
-}
+const { cmd } = require('../lib/command');
+const { ytsearch } = require('@dark-yasiya/yt-dl.js');
+const fetch = require('node-fetch');
 
 cmd({
-    pattern: "song",
-    alias: "play1",
-    desc: "song dl.",
-    react: "🎵",
-    category: "download",
-    filename: __filename
-}, async (conn, mek, m, extras) => {
-    try {
-        let q = convertYouTubeLink(extras.q);
-        if (!q) return extras.reply("*`Need title or Link`*");
+  pattern: "song",
+  react: "🎧",
+  desc: "Download YouTube song",
+  category: "download",
+  use: ".song <YouTube URL or Name>",
+  filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
+  try {
+    if (!q) return reply("🎵 *Please provide a YouTube link or song name.*");
 
-        const search = await yts(q);
-        const data = search.videos[0];
-        const url = data.url;
+    // Check if input is a YouTube URL
+    const isYouTubeURL = q.includes("youtube.com") || q.includes("youtu.be");
+    let song;
 
-        const desc = `┏━❮ SONG INFO ❯━
-┃🤖 *Title:* ${data.title}
-┃⏱️ *Duration:* ${data.timestamp}
-┃👀 *Views:* ${data.views}
-┃📅 *Uploaded:* ${data.ago}
-┗━━━━━━━━━━━━━━𖣔𖣔
-╭━━〔🔢 *REPLY NUMBER*〕━━┈⊷
-┃•1 Download Audio 🎧
-┃•2 Download Document 📁
-┃•3 Download Voice 🎤
-╰──────────────┈⊷
-> 𝐏𝙾𝚆𝙴𝚁𝙴𝙳 𝐁𝚈 𝐆𝐎𝐉𝐎`;
+    if (isYouTubeURL) {
+      song = {
+        url: q,
+        title: "YouTube Audio",
+        timestamp: "Unknown",
+        author: { name: "Unknown" },
+        thumbnail: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"
+      };
+    } else {
+      const yt = await ytsearch(q);
+      if (!yt.results || yt.results.length === 0) return reply("❌ *No results found!*");
+      song = yt.results[0];
+    }
 
-        const sentMsg = await conn.sendMessage(extras.from, {
-            image: { url: data.thumbnail },
-            caption: desc,
-            contextInfo: {
-                mentionedJid: [extras.sender],
-                forwardingScore: 1,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                  
-                    newsletterName: "𝐆𝐎𝐉𝐎 𝐌𝐃",
-                    serverMessageId: 999
-                }
-            }
-        }, { quoted: mek });
+    const { url, thumbnail: thumb } = song;
 
-        const messageID = sentMsg.key.id;
+    const caption = `
+🎧 *Title:* ${song.title}
+⏱ *Duration:* ${song.timestamp}
+👤 *Author:* ${song.author.name}
+🔗 *URL:* ${url}
 
-        conn.ev.on('messages.upsert', async (messageUpdate) => {
-            const msg = messageUpdate.messages[0];
-            if (!msg.message) return;
+📥 *Choose format to download:*
+1. 🎶 Audio (music)
+2. 📂 Document (mp3 file)
+3. 💫 Voice Note (ptt)
 
-            const typeText = msg.message.conversation || msg.message.extendedTextMessage?.text;
-            const isReplyToBot = msg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
-            const from = msg.key.remoteJid;
+_Reply with the number 1, 2, or 3 to proceed._`;
 
-            if (!isReplyToBot) return;
-            if (!['1', '2', '3'].includes(typeText)) return;
+    const sent = await conn.sendMessage(from, {
+      image: { url: thumb },
+      caption
+    }, { quoted: mek });
 
-            await conn.sendMessage(from, { react: { text: '📥', key: msg.key } });
+    const messageId = sent.key.id;
 
-            const down = await fetchJson(`https://lakiya-api-site.vercel.app/download/ytmp3new?url=${url}&type=mp3`);
+    const handler = async (msgUpdate) => {
+      try {
+        const msg = msgUpdate.messages[0];
+        if (!msg.message?.extendedTextMessage || msg.key.fromMe) return;
 
-            if (!down?.result?.downloadUrl) {
-                return conn.sendMessage(from, { text: "❌ Failed to fetch song. Try again later." }, { quoted: msg });
-            }
+        const repliedTo = msg.message.extendedTextMessage.contextInfo?.stanzaId;
+        if (repliedTo !== messageId) return;
 
-            const dlLink = down.result.downloadUrl;
+        const selected = msg.message.extendedTextMessage.text.trim();
 
-            if (typeText === '1') {
-                await conn.sendMessage(from, {
-                    audio: { url: dlLink },
-                    mimetype: "audio/mpeg",
-                    contextInfo: {
-                        externalAdReply: {
-                            title: data.title,
-                            body: data.videoId,
-                            mediaType: 1,
-                            sourceUrl: data.url,
-                            thumbnailUrl: data.thumbnail,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: msg });
-            } else if (typeText === '2') {
-                await conn.sendMessage(from, {
-                    document: { url: dlLink },
-                    mimetype: "audio/mp3",
-                    fileName: `${data.title}.mp3`,
-                    caption: "> 𝐏𝙾𝚆𝙴𝚁𝙴𝙳 𝐁𝚈 𝐆𝐨𝐣𝐨"
-                }, { quoted: msg });
-            } else if (typeText === '3') {
-                await conn.sendMessage(from, {
-                    audio: { url: dlLink },
-                    mimetype: "audio/mpeg",
-                    ptt: true,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: data.title,
-                            body: data.videoId,
-                            mediaType: 1,
-                            sourceUrl: data.url,
-                            thumbnailUrl: data.thumbnail,
-                            renderLargerThumbnail: true
-                        }
-                    }
-                }, { quoted: msg });
-            }
-
-            await conn.sendMessage(from, { react: { text: '✅', key: msg.key } });
+        await conn.sendMessage(from, {
+          react: { text: "📥", key: msg.key }
         });
 
-    } catch (e) {
-        console.log(e);
-        extras.reply(`❌ Error: ${e.message}`);
-    }
+        const res = await fetch(`https://apis.davidcyriltech.my.id/youtube/mp3?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (!data?.result?.downloadUrl) return reply("❌ *Failed to get download link.*");
+
+        const dl = data.result.downloadUrl;
+        const safeName = song.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".mp3";
+
+        if (selected === "1") {
+          await conn.sendMessage(from, {
+            audio: { url: dl },
+            mimetype: 'audio/mpeg'
+          }, { quoted: msg });
+
+        } else if (selected === "2") {
+          await conn.sendMessage(from, {
+            document: { url: dl },
+            mimetype: 'audio/mpeg',
+            fileName: safeName
+          }, { quoted: msg });
+
+        } else if (selected === "3") {
+          await conn.sendMessage(from, {
+            audio: { url: dl },
+            mimetype: 'audio/mpeg',
+            ptt: true
+          }, { quoted: msg });
+
+        } else {
+          await conn.sendMessage(from, {
+            text: "❌ *Invalid option. Please reply with 1, 2, or 3.*"
+          }, { quoted: msg });
+          return;
+        }
+
+        await conn.sendMessage(from, {
+          react: { text: "✅", key: msg.key }
+        });
+
+        conn.ev.off('messages.upsert', handler);
+
+      } catch (err) {
+        console.error("❌ Handler Error:", err);
+        reply("⚠️ *Error while processing your request.*");
+      }
+    };
+
+    conn.ev.on('messages.upsert', handler);
+    setTimeout(() => conn.ev.off('messages.upsert', handler), 60000); // auto-remove listener
+
+  } catch (e) {
+    console.error("❌ Main Error:", e);
+    reply("❌ *An error occurred. Please try again.*");
+  }
 });
