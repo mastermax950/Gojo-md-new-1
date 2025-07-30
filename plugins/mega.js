@@ -1,7 +1,8 @@
-const { cmd, commands } = require('../lib/command');
+const { cmd } = require('../lib/command');
 const { File } = require("megajs");
+const path = require('path');
 
-// ✅ Add isUrl() manually
+// 🔎 Simple URL checker
 function isUrl(str) {
   const pattern = new RegExp(
     '^(https?:\\/\\/)?' +
@@ -16,8 +17,8 @@ function isUrl(str) {
 
 cmd({
   pattern: "mega",
-  desc: "Download files from Mega.nz",
-  react: "🎀",
+  desc: "Download original file from Mega.nz",
+  react: "📦",
   filename: __filename
 }, async (conn, mek, m, {
   from, q, reply
@@ -29,7 +30,7 @@ cmd({
 
     const [fileUrl, decryptionKey] = q.split('#');
     if (!decryptionKey) {
-      return reply("❌ Error: Decryption key is missing in the provided URL.");
+      return reply("❌ Error: Decryption key is missing in the URL.");
     }
 
     const megaFile = File.fromURL(fileUrl + '#' + decryptionKey);
@@ -39,25 +40,26 @@ cmd({
       reply(`⬇️ Downloading: ${percent}% (${(downloaded / 1024 / 1024).toFixed(2)} MB of ${(total / 1024 / 1024).toFixed(2)} MB)`);
     });
 
-    const fileBuffer = await megaFile.downloadBuffer();
+    const buffer = await megaFile.downloadBuffer();
+    const fileName = megaFile.name || 'downloaded_file';
+    const fileExt = path.extname(fileName).toLowerCase();
 
-    await conn.sendMessage(from, {
-      document: fileBuffer,
-      mimetype: 'application/octet-stream',
-      fileName: megaFile.name || "mega_downloaded_file",
-      caption: `✅ *Downloaded from Mega.nz:*\n📁 *${megaFile.name}*`,
-      contextInfo: {
-        externalAdReply: {
-          title: "GOJO-MD",
-          body: "ꜱayura mihiranga",
-          mediaType: 1,
-          sourceUrl: "https://www.github.com",
-          thumbnailUrl: "https://raw.githubusercontent.com/gojo18888/Photo-video-/refs/heads/main/file_000000003a2861fd8da00091a32a065a.png",
-          renderLargerThumbnail: false,
-          showAdAttribution: true
-        }
-      }
-    }, { quoted: mek });
+    // 🧠 Decide based on file type
+    if (fileExt === '.mp4') {
+      await conn.sendMessage(from, {
+        video: buffer,
+        mimetype: 'video/mp4',
+        fileName: fileName,
+        caption: `🎬 *Original MP4 from Mega.nz*\n📁 ${fileName}`,
+      }, { quoted: mek });
+    } else {
+      await conn.sendMessage(from, {
+        document: buffer,
+        mimetype: 'application/octet-stream',
+        fileName: fileName,
+        caption: `📁 *Downloaded from Mega.nz*\n✅ Original file preserved: ${fileName}`,
+      }, { quoted: mek });
+    }
 
   } catch (error) {
     console.error(error);
