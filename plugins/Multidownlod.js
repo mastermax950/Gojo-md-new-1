@@ -433,7 +433,6 @@ reply(`${e}`)
 
 
 
-
 const fetch = require('node-fetch')
 const { sizeFormatter } = require('human-readable')
 
@@ -450,9 +449,11 @@ async function GDriveDl(url) {
   if (!url || !url.match(/drive\.google/i)) return result
 
   try {
+    // Extract file ID from Google Drive link
     id = (url.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]+)/) || [])[1]
     if (!id) throw new Error('ID Not Found')
 
+    // Initial request to get direct download info
     const res = await fetch(`https://drive.google.com/uc?id=${id}&authuser=0&export=download`, {
       method: 'POST',
       headers: {
@@ -475,11 +476,14 @@ async function GDriveDl(url) {
     const dlRes = await fetch(json.downloadUrl)
     if (dlRes.status !== 200) throw new Error(`Download failed: ${dlRes.statusText}`)
 
+    const mimetype = dlRes.headers.get('content-type') || 'video/mp4'
+
     return {
+      error: false,
       downloadUrl: json.downloadUrl,
       fileName: json.fileName || 'Unknown',
       fileSize: formatSize(json.sizeBytes || 0),
-      mimetype: dlRes.headers.get('content-type') || 'video/mp4'
+      mimetype
     }
 
   } catch (e) {
@@ -489,30 +493,39 @@ async function GDriveDl(url) {
 }
 
 cmd({
-  pattern: 'gdrive2',
-  desc: 'Download file from Google Drive',
+  pattern: 'gdrive',
+  desc: 'Download MP4 video from Google Drive and send to WhatsApp',
   category: 'downloader',
-  use: '.gdrive <drive link>',
+  use: '.gdrive <google drive link>',
   filename: __filename
 }, async (conn, m, msg, { q, from }) => {
-  if (!q || !q.includes('drive.google.com')) return m.reply('❌ *Please provide a valid Google Drive link.*')
+  if (!q || !q.includes('drive.google.com')) {
+    return m.reply('❌ *Please provide a valid Google Drive link.*')
+  }
 
   m.reply('📥 Downloading from Google Drive...')
 
   const data = await GDriveDl(q)
 
-  if (data.error) return m.reply('❌ *Failed to get direct link (maybe quota exceeded or link is blocked).*')
+  if (data.error) {
+    return m.reply('❌ *Failed to get direct link (maybe quota exceeded or link is blocked).*')
+  }
+
+  // ❗ Allow only .mp4 videos
+  if (!data.mimetype.includes('video/mp4')) {
+    return m.reply(`❌ *Only MP4 video files are allowed.*\n\n📄 Detected Type: ${data.mimetype}`)
+  }
 
   try {
     await conn.sendMessage(from, {
       video: { url: data.downloadUrl },
-      mimetype: data.mimetype,
+      mimetype: 'video/mp4',
       fileName: data.fileName,
       caption: `✅ *Downloaded from Google Drive:*\n\n📁 *Name:* ${data.fileName}\n📦 *Size:* ${data.fileSize}`
     }, { quoted: m })
-
   } catch (err) {
-    console.log(err)
-    m.reply('⚠️ *Error while sending file*')
+    console.error('[SendVideo Error]', err)
+    m.reply('⚠️ *Error while sending the video file.*')
   }
 })
+
