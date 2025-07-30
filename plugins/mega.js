@@ -1,55 +1,66 @@
 const { cmd, commands } = require('../lib/command');
 const { File } = require("megajs");
 
+// ✅ Add isUrl() manually
+function isUrl(str) {
+  const pattern = new RegExp(
+    '^(https?:\\/\\/)?' +
+    '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.?)+[a-z]{2,}|' +
+    '((\\d{1,3}\\.){3}\\d{1,3}))' +
+    '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' +
+    '(\\?[;&a-z\\d%_.~+=-]*)?' +
+    '(\\#[-a-z\\d_]*)?$','i'
+  );
+  return !!pattern.test(str);
+}
+
 cmd({
-    pattern: "mega",
-    desc: "commands panel",
-    react: "🎀",
-    filename: __filename
-},
-async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
-    try {
-    // Validate the provided URL
+  pattern: "mega",
+  desc: "Download files from Mega.nz",
+  react: "🎀",
+  filename: __filename
+}, async (conn, mek, m, {
+  from, q, reply
+}) => {
+  try {
     if (!q || !isUrl(q) || !q.includes("mega.nz")) {
-      return reply("Please provide a valid Mega.nz file URL.");
+      return reply("❌ Please provide a valid Mega.nz file URL.");
     }
 
-    // Extract file URL and decryption key
     const [fileUrl, decryptionKey] = q.split('#');
     if (!decryptionKey) {
-      return reply("Error: Decryption key is missing in the provided URL.");
+      return reply("❌ Error: Decryption key is missing in the provided URL.");
     }
 
-    // Start file download
     const megaFile = File.fromURL(fileUrl + '#' + decryptionKey);
+
     megaFile.on("progress", (downloaded, total) => {
-      const progressPercentage = ((downloaded / total) * 100).toFixed(2);
-      reply(`Downloading: ${progressPercentage}% (${(downloaded / 1024 / 1024).toFixed(2)} MB of ${(total / 1024 / 1024).toFixed(2)} MB)`);
+      const percent = ((downloaded / total) * 100).toFixed(2);
+      reply(`⬇️ Downloading: ${percent}% (${(downloaded / 1024 / 1024).toFixed(2)} MB of ${(total / 1024 / 1024).toFixed(2)} MB)`);
     });
 
-    // Download file and send it
     const fileBuffer = await megaFile.downloadBuffer();
 
     await conn.sendMessage(from, {
-      document: { url: fileBuffer},
-      mimetype: application/octet-stream,
-      fileName: mega_downloaded_file, // Ensure `img.allmenu` is a valid image URL or base64 encoded image
-      caption: info,
+      document: fileBuffer,
+      mimetype: 'application/octet-stream',
+      fileName: megaFile.name || "mega_downloaded_file",
+      caption: `✅ *Downloaded from Mega.nz:*\n📁 *${megaFile.name}*`,
       contextInfo: {
-          externalAdReply: {
-              title: "GOJO-MD",
-              body: "ꜱayura mihiranga",
-              mediaType: 1,
-              sourceUrl: "https://www.github.com",
-              thumbnailUrl: "https://raw.githubusercontent.com/gojo18888/Photo-video-/refs/heads/main/file_000000003a2861fd8da00091a32a065a.png", // This should match the image URL provided above
-              renderLargerThumbnail: false,
-              showAdAttribution: true
-          }
+        externalAdReply: {
+          title: "GOJO-MD",
+          body: "ꜱayura mihiranga",
+          mediaType: 1,
+          sourceUrl: "https://www.github.com",
+          thumbnailUrl: "https://raw.githubusercontent.com/gojo18888/Photo-video-/refs/heads/main/file_000000003a2861fd8da00091a32a065a.png",
+          renderLargerThumbnail: false,
+          showAdAttribution: true
+        }
       }
-
     }, { quoted: mek });
+
   } catch (error) {
     console.error(error);
-    reply("Error: " + error.message);
+    reply("❌ Error: " + error.message);
   }
 });
