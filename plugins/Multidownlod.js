@@ -433,52 +433,86 @@ reply(`${e}`)
 
 
 
-cmd({
 
-    pattern: "gdrive2",
-    desc: "To download Gdrive files.",
-    react: "🌐",
-    category: "download",
-    filename: __filename
+const fetch = require('node-fetch')
+const { sizeFormatter } = require('human-readable')
 
-  },
+const formatSize = sizeFormatter({
+  std: 'JEDEC',
+  decimalPlaces: 2,
+  keepTrailingZeroes: false,
+  render: (literal, symbol) => `${literal} ${symbol}B`
+})
 
-  async(conn, mek, m,{from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
+async function GDriveDl(url) {
+  let id, result = { error: true }
 
-  try{
-    await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
-  if (!q) return m.reply(`Please Give Me a vaild Link...`);
+  if (!url || !url.match(/drive\.google/i)) return result
 
-  const apiUrl = `https://api.fgmods.xyz/api/downloader/gdrive?url=${q}&apikey=mnp3grlZ`;
+  try {
+    id = (url.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]+)/) || [])[1]
+    if (!id) throw new Error('ID Not Found')
 
-  const downloadResponse = await axios.get(apiUrl);
-                            const downloadUrl = downloadResponse.data.result.downloadUrl; // Assuming this is the correct path
+    const res = await fetch(`https://drive.google.com/uc?id=${id}&authuser=0&export=download`, {
+      method: 'POST',
+      headers: {
+        'accept-encoding': 'gzip, deflate, br',
+        'content-length': 0,
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'origin': 'https://drive.google.com',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'x-client-data': 'CKG1yQEIkbbJAQiitskBCMS2yQEIqZ3KAQioo8oBGLeYygE=',
+        'x-drive-first-party': 'DriveWebUi',
+        'x-json-requested': 'true'
+      }
+    })
 
-                            if (downloadUrl) {
-                                // Send the video as a document (.mp4)
-                                await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
-                                await conn.sendMessage(from, {
-                                    document: { url: downloadUrl },
-                                    mimetype: downloadResponse.data.result.mimetype,
-                                    fileName: downloadResponse.data.result.fileName,
-                                    caption: `*© ᴄʀᴇᴀᴛᴇᴅ ʙʏ ꜱayura mihiranga · · ·*\n\n> Gojo-ᴍᴅ ✻`,
-                                    contextInfo: {
-                                        mentionedJid: ['94743826406@s.whatsapp.net'], // specify mentioned JID(s) if any
-                                        groupMentions: [],
-                                        forwardingScore: 1,
-                                        isForwarded: true,
-                                        forwardedNewsletterMessageInfo: {
+    const jsonText = await res.text()
+    const json = JSON.parse(jsonText.slice(4))
 
-                                            newsletterName: "Gojo-ᴍᴅ ✻",
-                                            serverMessageId: 999
-                                        }
-                                    }
-                                    }, {quoted: mek});
-                            }
+    if (!json.downloadUrl) throw new Error('Link blocked or quota exceeded.')
 
-                            await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-  }catch(e){
-  console.log(e)
+    const dlRes = await fetch(json.downloadUrl)
+    if (dlRes.status !== 200) throw new Error(`Download failed: ${dlRes.statusText}`)
+
+    return {
+      downloadUrl: json.downloadUrl,
+      fileName: json.fileName || 'Unknown',
+      fileSize: formatSize(json.sizeBytes || 0),
+      mimetype: dlRes.headers.get('content-type') || 'video/mp4'
+    }
+
+  } catch (e) {
+    console.error('[GDriveDl Error]', e.message)
+    return result
   }
-  });
+}
 
+cmd({
+  pattern: 'gdrive2',
+  desc: 'Download file from Google Drive',
+  category: 'downloader',
+  use: '.gdrive <drive link>',
+  filename: __filename
+}, async (conn, m, msg, { q, from }) => {
+  if (!q || !q.includes('drive.google.com')) return m.reply('❌ *Please provide a valid Google Drive link.*')
+
+  m.reply('📥 Downloading from Google Drive...')
+
+  const data = await GDriveDl(q)
+
+  if (data.error) return m.reply('❌ *Failed to get direct link (maybe quota exceeded or link is blocked).*')
+
+  try {
+    await conn.sendMessage(from, {
+      video: { url: data.downloadUrl },
+      mimetype: data.mimetype,
+      fileName: data.fileName,
+      caption: `✅ *Downloaded from Google Drive:*\n\n📁 *Name:* ${data.fileName}\n📦 *Size:* ${data.fileSize}`
+    }, { quoted: m })
+
+  } catch (err) {
+    console.log(err)
+    m.reply('⚠️ *Error while sending file*')
+  }
+})
