@@ -3,7 +3,7 @@ const { File } = require("megajs");
 const path = require('path');
 
 cmd({
-  pattern: "mega",
+  pattern: "chanel",
   desc: "Download real mp4 from Mega.nz",
   react: "🎥",
   filename: __filename
@@ -31,13 +31,24 @@ cmd({
       return reply(`❌ File is too large (${sizeInMB.toFixed(2)}MB). WhatsApp max: 100MB.`);
     }
 
-    // Send video if .mp4
+    // 🔥 Caption එකට file name එක දැමීම
+    const caption = `🎞️ *${fileName}*
+
+❖ Video Quality : 720p
+
+📥 Video එක Full Download කිරිමෙන් අනතුරුව බලන්න
+
+🚨 වැඩ නැති එකක් උනොත් මේ number එකට message එකක් දාන්න: 0743826406
+
+> *ᴜᴘʟᴏᴀᴅ ʙʏ GOJO MD*`;
+
+    // Send as real video
     if (ext === ".mp4") {
       await conn.sendMessage(from, {
         video: buffer,
         mimetype: 'video/mp4',
         fileName,
-        caption: `🎬 *Video from Mega.nz*\n📁 ${fileName}`
+        caption
       }, { quoted: mek });
     } else {
       await conn.sendMessage(from, {
