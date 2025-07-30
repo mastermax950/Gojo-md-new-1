@@ -493,7 +493,7 @@ async function GDriveDl(url) {
 }
 
 cmd({
-  pattern: 'gdrive',
+  pattern: 'gdrive2',
   desc: 'Download MP4 video from Google Drive and send to WhatsApp',
   category: 'downloader',
   use: '.gdrive <google drive link>',
