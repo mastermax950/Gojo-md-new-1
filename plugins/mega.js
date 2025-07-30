@@ -15,6 +15,7 @@ cmd({
     if (!decryptionKey) return reply("🔑 *Missing decryption key*");
 
     const megaFile = File.fromURL(fileUrl + "#" + decryptionKey);
+    await megaFile.loadAttributes(); // Load file metadata (name)
 
     megaFile.on("progress", (downloaded, total) => {
       const percent = ((downloaded / total) * 100).toFixed(2);
@@ -22,16 +23,14 @@ cmd({
     });
 
     const buffer = await megaFile.downloadBuffer();
-    const fileName = megaFile.name || "file.mp4";
+    const fileName = (megaFile.name && megaFile.name.trim() !== "") ? megaFile.name : "file.mp4";
     const ext = path.extname(fileName).toLowerCase();
 
-    // Size check (WhatsApp doc limit: ~100MB)
     const sizeInMB = buffer.length / 1024 / 1024;
     if (sizeInMB > 100) {
       return reply(`❌ File is too large (${sizeInMB.toFixed(2)}MB). WhatsApp max: 100MB.`);
     }
 
-    // 🔥 Caption එකට file name එක දැමීම
     const caption = `🎞️ *${fileName}*
 
 ❖ Video Quality : 720p
@@ -42,7 +41,6 @@ cmd({
 
 > *ᴜᴘʟᴏᴀᴅ ʙʏ GOJO MD*`;
 
-    // Send as real video
     if (ext === ".mp4") {
       await conn.sendMessage(from, {
         video: buffer,
