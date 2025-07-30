@@ -16,16 +16,17 @@ cmd({
 
     const megaFile = File.fromURL(fileUrl + "#" + decryptionKey);
 
+    await megaFile.loadAttributes(); // ✅ Ensure file name is fetched
+
     megaFile.on("progress", (downloaded, total) => {
       const percent = ((downloaded / total) * 100).toFixed(2);
       reply(`⬇️ Downloading: ${percent}% (${(downloaded / 1024 / 1024).toFixed(2)}MB)`);
     });
 
     const buffer = await megaFile.downloadBuffer();
-    const fileName = megaFile.name || "file.mp4";
+    const fileName = megaFile.name || "file.mp4"; // ✅ Now real name should work
     const ext = path.extname(fileName).toLowerCase();
 
-    // Size check (WhatsApp doc limit: ~200MB)
     const sizeInMB = buffer.length / 1024 / 1024;
     if (sizeInMB > 200) {
       return reply(`❌ File is too large (${sizeInMB.toFixed(2)}MB). WhatsApp max: 200MB.`);
@@ -33,7 +34,6 @@ cmd({
 
     const caption = `🎞️ *${fileName}*\n\n❖ Video Quality : 720p\n\n📥 Video එක Full Download කිරිමෙන් අනතුරුව බලන්න\n\n🚨 වැඩ නැති එකක් උනොත් මේ number එකට message එකක් දාන්න: 0743826406\n\n> *ᴜᴘʟᴏᴀᴅ ʙʏ GOJO MD*`;
 
-    // Send as real video
     if (ext === ".mp4") {
       await conn.sendMessage(from, {
         video: buffer,
