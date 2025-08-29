@@ -1,41 +1,60 @@
-const {cmd , commands} = require('../lib/command');
-const { fetchJson } = require('../lib/functions');
+const { cmd } = require('../lib/command');
+const axios = require("axios");
 
 cmd({
     pattern: "download",
     alias: ["downurl"],
-    use: '.yts gojo md whatsapp bot',
+    use: '.download <url>',
     react: "🔰",
-    desc: "Search and get details from youtube.",
+    desc: "Download file from direct link.",
     category: "search",
     filename: __filename
-
 },
 
-async(conn, mek, m,{from, l, quoted, body, isCmd, umarmd, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
-try {
-    if (!q) {
-      return reply("❗ කරුණාකර download link එකක් ලබා දෙන්න."); // "Please provide a download link."
-    }
+async (conn, mek, m, { from, q, reply }) => {
+  try {
+    if (!q) return reply("❗ කරුණාකර download link එකක් ලබා දෙන්න."); 
 
     const link = q.trim();
     const urlPattern = /^(https?:\/\/[^\s]+)/;
 
     if (!urlPattern.test(link)) {
-      return reply("❗ දීලා තියෙන URL එක වැරදි. කරුණාකර link එක හොඳින් බලන්න."); // "The provided URL is incorrect. Please check the link carefully."
+      return reply("❗ දීලා තියෙන URL එක වැරදි. කරුණාකර link එක හොඳින් බලන්න.");
     }
-let info = `*© ᴄʀᴇᴀᴛᴇᴅ ʙʏ ꜱayura mihiranga  · · ·*`;
 
-   await conn.sendMessage(from, {
-                        document: { url: link},
-                        mimetype: "video/mp4",
-                        fileName: `Gojo-ᴍᴅ ✻.mp4`, // Ensure `img.allmenu` is a valid image URL or base64 encoded image
-                        caption: info
-                                            
-                      }, { quoted: mek });
+    // HEAD request to detect filename
+    let fileName = "Gojo-md.mp4";
+    try {
+      const response = await axios.head(link);
+      const disposition = response.headers["content-disposition"];
+      if (disposition && disposition.includes("filename=")) {
+        fileName = disposition
+          .split("filename=")[1]
+          .replace(/['"]/g, "")
+          .trim();
+      } else {
+        // fallback if no content-disposition header
+        const urlParts = link.split("/");
+        fileName = decodeURIComponent(urlParts[urlParts.length - 1]);
+      }
+    } catch (err) {
+      console.log("Filename fetch error:", err.message);
+      // fallback
+      const urlParts = link.split("/");
+      fileName = decodeURIComponent(urlParts[urlParts.length - 1]);
+    }
 
-} catch (e) {
-        console.log(e);
-        reply(`${e}`);
-        }
-    });  
+    let info = `*© ᴄʀᴇᴀᴛᴇᴅ ʙʏ ꜱayura mihiranga  · · ·*`;
+
+    await conn.sendMessage(from, {
+      document: { url: link },
+      mimetype: "video/mp4",
+      fileName: fileName,
+      caption: info
+    }, { quoted: mek });
+
+  } catch (e) {
+    console.log(e);
+    reply(`${e}`);
+  }
+});
